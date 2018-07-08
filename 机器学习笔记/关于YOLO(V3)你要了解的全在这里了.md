@@ -24,8 +24,8 @@ YOLO算法的核心思想是创新性地提出了将输入图片进行N\*N的栅
 
 ## 2.训练
 既然已经有了you only look once的想法，那接下来就要将这个想法数学化，这样才能用数学的方法训练模型学习表达坐标和类别的特征，用于后期的预测。YOLO算法几乎是原图输入就直接预测出每个grid cell“附近”是否有某个对象和具体的 box位置，那最终这个想法数学化后便只能体现在loss函数上了，这里我先不给出loss函数的具体公式，因为在提出loss函数之前还要再了解三个概念：anchor box、置信度(confidence)和对象条件类别概率(conditional class probabilities)。作者提出，在网络最后的输出中，对于每个grid cell对应bounding box的输出有三类参数：一个是对象的box参数，一共是四个值，即box的中心点坐标（x,y）和box的宽和高（w,h）;一个是置信度，这是个区间在[0,1]之间的值；最后一个是一组条件类别概率，都是区间在[0,1]之间的值，代表概率。下面具体介绍分别具体介绍这三个参数的意义。
-### 2.1 anchor box
-anchor box其实就是从训练集的所有ground truth box中统计出来的在训练集中最经常出现的几个box形状。比如，在某个训练集中最常出现的box形状有扁长的、瘦高的和长高比例差不多的正方形这三种形状。我们可以预先将这些统计上的先验（或来自人类的）经验加入到模型中，这样模型在学习的时候，瞎找的可能性就更小了，当然就有助于模型快速收敛了，从而加快训练速度。以前面提到的训练数据集中的ground truth box最常出现的三个形状为例，当模型在训练的时候我们可以告诉它，你要在grid cell 1附件找出的对象的形状要么是扁长的、要么是瘦高的、要么是长高比例差不多的正方形，你就不要再瞎试其他的形状了。  
+### 2.1 anchor box（bounding box prior）
+anchor box(论文中也称为bounding box prior，后面均使用anchor box)其实就是从训练集的所有ground truth box中统计出来的在训练集中最经常出现的几个box形状。比如，在某个训练集中最常出现的box形状有扁长的、瘦高的和长高比例差不多的正方形这三种形状。我们可以预先将这些统计上的先验（或来自人类的）经验加入到模型中，这样模型在学习的时候，瞎找的可能性就更小了，当然就有助于模型快速收敛了，从而加快训练速度。以前面提到的训练数据集中的ground truth box最常出现的三个形状为例，当模型在训练的时候我们可以告诉它，你要在grid cell 1附件找出的对象的形状要么是扁长的、要么是瘦高的、要么是长高比例差不多的正方形，你就不要再瞎试其他的形状了。  
 
 要在模型中使用这些形状，总不能告诉模型有个形状是瘦高的，还有一个是矮胖的，我们需要量化这些形状。YOLO的做法是想办法找出分别代表这些形状的宽和高，有了宽和高，尺寸比例即形状不就有了。YOLO的找的办法是使用k-means算法在训练集中众多ground truth box中聚类出代表性形状的宽和高。细心的读者可能会提出这个问题：到底找出几个anchor box算是最佳的具有代表性的形状。YOLO作者方法是做实验，聚类出多个数量不同anchor box组，分别应用到模型中，最终找出最优的在模型的复杂度和高召回率(high recall)之间折中的那组anchor box。作者在COCO数据集中使用了9个anchor box，我们前面提到的例子则有3个anchor box。
 
@@ -75,7 +75,7 @@ $$
 ### 2.3 对象条件类别概率(conditional class probabilities)
 对象条件类别概率是每个bounding box输出的其中一个重要参数，它是一组概率的数组，数组的长度为当前模型detect的类别种类数量，它的意义是当bounding box认为当前box中有对象时，可能是要检测的类别中每种类别的概率，其实这个分类模型最后输出的一组类别概率是类似的，只是二者存在两点不同：1.YOLO的对象类别概率中没有background一项，因为也不需要，因为对background的预测已经交给置信度了，所以它的输出是有条件的，那就是在置信度表示当前box有object的前提下，所以当前条件概率的数学形式为$P_{r}(class_{i}|Object)$;2.分类模型中最后输出之前使用softmax求出每个类别的概率，也就是说各个类别之间是互斥的，而YOLO算法的每个类别概率是单独用逻辑回归函数(sigmoid函数)计算得出了，所以每个类别不必是互斥的，也就是说一个对象可以被预测出多个类别。这个想法其实是有一些YOLO9000的意思的，这就是我为什么不介绍YOLO9000的原因，因为YOLOv3已经有9000类似的功能，不同只是不能像9000一样，同时使用分类数据集和对象检测数据集。  
 
-介绍完所有的输出参数后，我们总结下模型最终输出的参数维数是多少，假如一个图片被分割成S*S个grid cell，我们有B个anchor box，也就是说每个grid cell有B个bounding box, 每个bounding box内有4个位置参数，1个置信度，classes个类别概率，那么最终的输出维数是：$S*S*[B*(4 + 1 + classes)]$。
+介绍完所有的输出参数后，我们总结下模型最终输出层的输出维数是多少，假如一个图片被分割成S*S个grid cell，我们有B个anchor box，也就是说每个grid cell有B个bounding box, 每个bounding box内有4个位置参数，1个置信度，classes个类别概率，那么最终的输出维数是：$S*S*[B*(4 + 1 + classes)]$。
 ### 2.4 loss函数
 介绍完模型最终输出中有哪些参数后，我们应该可以定义loss函数了，作者使用了最简单的差平方和误差（sum-squared error）,使用的原因很简单，因为好优化。那我们试着给出loss函数的公式：
 $$
@@ -87,26 +87,47 @@ loss = \sum_{i=0}^{S^{2}}\sum_{j=0}^{B}[(x_{i}^{j} - \widehat x_{i}^{j})^{2} + (
 \end{aligned}
 $$
 
-如果看过YOLO的论文你会发现，这里的公式和论文中的公式虽然相似，但是差别还是很大的。其实，作者是在上面这个公式的基础上加了很多限制和优化参数，上面的公式只是我为了更好说明YOLO的loss公式而给出的对比loss公式，这样有助于更好的理解YOLO的loss函数公式中加入的每个参数的意义，下面给出真正的YOLO loss函数公式:
+如果看过YOLO的论文你会发现，这里的公式和论文中的公式虽然相似，但是差别还是很大的。其实，作者是在上面这个公式的基础上加了很多限制和优化参数，上面的公式只是我为了更好说明YOLO的loss公式而给出的对比公式，这样有助于更好的理解YOLO的loss函数公式中加入的每个参数的意义，下面给出真正的YOLO loss函数公式（这个公式也是根据我自己的理解总结出来的，三篇论文中都未给出此公式）:
 $$
 \begin{aligned}
-loss = \lambda_{coord}\sum_{i=0}^{S^{2}}\sum_{j=0}^{B} \mathbb{I}_{ij}^{obj} [(x_{i}^{j} - \widehat x_{i}^{j})^{2} + (y_{i}^{j} - \widehat y_{i}^{j})^{2}] \\
-+\lambda_{coord}\sum_{i=0}^{S^{2}}\sum_{j=0}^{B}\mathbb{I}_{ij}^{obj}[(w_{i}^{j} - \widehat w_{i}^{j})^{2} + (h_{i}^{j} - \widehat h_{i}^{j})^{2}]  \\
-+ \sum_{i=0}^{S^{2}}\sum_{j=0}^{B}\mathbb{I}_{ij}^{obj}(C_{i}^{j} - \widehat C_{i}^{j})^{2}  \\
-+ \lambda_{noobj}\sum_{i=0}^{S^{2}}\sum_{j=0}^{B}\mathbb{I}_{ij}^{noobj}(C_{i}^{j} - \widehat C_{i}^{j})^{2}  \\
+loss = \sum_{i=0}^{S^{2}}\sum_{j=0}^{B} \mathbb{I}_{ij}^{obj} [(x_{i}^{j} - \widehat x_{i}^{j})^{2} + (y_{i}^{j} - \widehat y_{i}^{j})^{2}] \\
++\sum_{i=0}^{S^{2}}\sum_{j=0}^{B}\mathbb{I}_{ij}^{obj}[(w_{i}^{j} - \widehat w_{i}^{j})^{2} + (h_{i}^{j} - \widehat h_{i}^{j})^{2}]  \\
++ \sum_{i=0}^{S^{2}}\sum_{j=0}^{B}\mathbb{G}_{ij}(C_{i}^{j} - \widehat C_{i}^{j})^{2}  \\
 + \sum_{i=0}^{S^{2}}\sum_{j=0}^{B}\sum_{c \in classes}\mathbb{I}_{ij}^{obj}(p_{i}^{j}(c) - \widehat p_{i}^{j}(c))^{2}
 \end{aligned}
 $$
 
-细心的你很定也注意到了，这个公式和YOLOv1论文中的公式还是不一样。那是因为在YOLOv3中，作者将置信度和条件类别概率放到了每个bounding box中，即每个bounding box都有一对置信度和条件类别概率，而v1中所有的bounding box共用一对置信度和条件类别概率，上文中在解释输出的各个参数时，默认解释的是v3的输出格式，关于v1的细节不再赘述。
+细心的你一定也注意到了，这个公式和YOLOv1论文中的公式还是不一样。那是因为在YOLOv3中，作者将置信度和条件类别概率放到了每个bounding box中，即每个bounding box都有一对置信度和条件类别概率，而v1中所有的bounding box共用一对置信度和条件类别概率，上文中在解释输出的各个参数时，默认解释的是v3的输出格式，关于v1的细节不再赘述。  
 
-### 训练时动态改变输入图片的大小
+- v1和v2 loss中的$\lambda_{coord}$和$\lambda_{noobj}$ 参数去哪了
+v3去掉了v1和v2 loss中的$\lambda_{coord}$和$\lambda_{noobj}$ 参数  
+这点在论文中未提及，但是在作者的实现源码中未使用，可能模型已经变得更加稳定，不需要这样的微调。当然，在darknet的yolov3.cfg配置文件中也没有这两个参数的配置，此处不再赘述。
+
+- 参数$ \mathbb{I}_{ij}^{obj} $  
+在训练中，如果某个grid cell的bounding box没有负责预测某个对象，那我们就不应该训练该bounding box的条件类别概率和坐标参数，因为使用这些参数的前提是在明确清楚该bounding box负责预测某个ground truth box(后面说明怎么决定是否负责)，即不应该根据条件类别概率和中心坐标输出误差调整相应的weights，那如何不进行这部分训练呢，当然是不让他们对loss做出贡献，也就没有他们什么事情了，这个时候就需要
+参数$ \mathbb{I}_{ij}^{obj} $了，当该bounding box负责预测某个ground truth box时，$ \mathbb{I}_{ij}^{obj} =1$，否则，$ \mathbb{I}_{ij}^{obj} =0$。
+
+- $ C_{i}^{j} $和$\mathbb{G}_{ij}$的值如何确定  
+训练中，$ C_{i}^{j} $的取值是由grid cell的bounding box有没有负责预测某个对象决定的。如果负责，那么$ C_{i}^{j}=1 $，否则，$ C_{i}^{j}=0 $。下面我们来介绍如何确定某个grid cell的bounding box是否负责预测某个对象：前面在说明anchor box的时候提到每个每个bounding box负责预测的形状是依据与其对应的anchor box（bounding box prior）相关的，那这个anchor box与ground truth box的IOU在所有的anchor box与ground truth box的IOU中最大，那它就负责预测这个对象，因为这个形状、尺寸最符合当前这个对象，这时$ C_{i}^{j}=1 $，其他情况下$ C_{i}^{j}=0 $。注意，你没有看错，就是所有anchor box与某个ground truth box的IOU最大的那个anchor box对应的bounding box负责预测该对象，与该bounding bxo预测的box没有关系。另外，这里有个例外，当预测的某个bounding box（没错这个又和bounding box预测的box有关）与某个对象的ground truth box的IOU大于设定的阈值时（论文中是0.5，darknet中针对COCO数据集使用的是0.7），忽略该bounding box所有输出的对loss的误差贡献，包括置信度误差，这时$\mathbb{G}_{ij}=0$，其他情况$\mathbb{G}_{ij}=1$。结合之前的说明可以看出，参数$ \mathbb{I}_{ij}^{obj} $ 和$ C_{i}^{j} $的值其实是保持一致的。 如果你不理解为何作者这样做，建议阅读faster-rcnn论文，作者的做法其实是借鉴了faster-rcnn的anchor box思想。
+
+- grid cell的个数S如何确定  
+自v2后，YOLO算法网络结构中只使用卷积和池化操作进行作为特征提取和推理运算，去掉了传统的全连接层，这样的做法有一个好处，就是理论上整个网络不再限制输入图片的尺寸，因为卷积层本来就对输入的尺寸没有限制。作者在这样的基础上，在训练一段时间后，随意改变输入层的尺寸后再进行另一阶段训练，这样就让模型在不同尺寸的图片上都表现良好，作者将之称为Multi-Scale training。当前，输入的尺寸并不是随心所欲地改变，而是在（10\*32, 11\*32, 12\*32, ..., 19\*32）这几个尺寸中随机选择resize输入的原始图片。当确定了出入层的大小后，模型通过卷积和池化层输入输出尺寸公式计算后，便能预先便能知道在某个输入尺寸前提下，最后的输入层尺寸是多少了，也就是grid cell的个数，即loss函数中S的值。其实，S的取值只可能在集合（10\*10,11\*11, 12\*12,...,19\*19）中。
+
+- 数据扩增（data augmentation）和batch normalization
+训练中的标准组件，不再赘述。
+
+
+### 跨尺寸预测（Predictions across scales）
+YOLO算法从三个不同的尺寸预测对象box，这三个不同的尺寸的来自不同层级的卷积层的输出。该方法借鉴了feature pyramid network的思想: 由于卷积层每隔几层，特征映射(feature mapping)的宽和高就会减少，而通道数会增加，随着网络层次的加深，特征映射组成的形状类似于金字塔，如果将不同层级的特征映射进行简单的卷积或者非线性变换后映射为最终的输出，那么将有助于提升模型在不同对象大小尺度上的表现，即有助于提高模型从小目标到大目标的综合检测能力，关于feature pyramid network具体内容，此处不详细展开，可直接参开其[论文](https://arxiv.org/abs/1612.03144)。但是，YOLO并没有完全使用feature pyramid network的思想，在说明YOLO的做法前，我们先看下YOLO模型的网络结构：  
+
+
+
+以上，就是YOLO算法训练部分的细节，训练好模型后，下面就是如何使用模型进行预测了，虽然YOLO是号称训练和预测使用一套模型，但是在具体使用中，还是有些细微的差别。
 
 ## 预测
 ### 使用非极大值抑制(NMS non-max suppression)
 
 ## 骨干网络（backbone network）
-### batch normalization
 ### 残差模块
 
 ## 其他细节
